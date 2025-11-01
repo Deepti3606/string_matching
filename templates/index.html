@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>String Matching Visualizer — Naive vs Rabin-Karp</title>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    /* ---------- Fonts & base ---------- */
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;500;700&display=swap');
+    :root{
+      --bg1:#e6f0ff; --bg2:#f3e8ff; --card:#ffffff; --muted:#6b7280;
+      --accent:#2563eb; --accent2:#7c3aed; --green:#10b981; --orange:#f59e0b;
+      --glass-border: rgba(15, 23, 42, 0.06);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:"Poppins",system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;background:linear-gradient(180deg,var(--bg1),var(--bg2));color:#0b1220;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
+    body{padding:28px;display:flex;flex-direction:column;align-items:center}
+
+    /* ---------- Centered title ---------- */
+    .header{
+      text-align:center;
+      margin-bottom:18px;
+    }
+    .logo{
+      width:64px;height:64px;border-radius:14px;margin:0 auto;
+      background:linear-gradient(135deg,var(--accent),var(--accent2));
+      color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 10px 30px rgba(37,99,235,0.12);
+    }
+    .title{font-size:28px;font-weight:700;margin-top:12px;}
+    .subtitle{color:var(--muted);margin-top:6px;font-size:13px;}
+
+    /* ---------- Container ---------- */
+    .page{width:95%;max-width:1180px;display:flex;flex-direction:column;gap:18px}
+
+    .card{
+      background:var(--card);border-radius:12px;padding:18px;box-shadow: 0 8px 30px rgba(12,18,33,0.06);border:1px solid var(--glass-border);
+    }
+
+    /* ---------- Input grid ---------- */
+    .input-grid{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
+    label{display:block;font-weight:600;color:#0b1220;margin-bottom:6px}
+    .text-input{width:100%;min-height:100px;padding:12px;border-radius:10px;border:1px solid #eef6ff;font-size:14px;resize:vertical}
+    .small-input{width:100%;padding:10px;border-radius:10px;border:1px solid #eef6ff;font-size:14px}
+
+    .controls{display:flex;flex-direction:column;gap:8px}
+    .run-btn{background:linear-gradient(90deg,var(--accent),var(--accent2));color:#fff;border:none;padding:12px 14px;border-radius:10px;cursor:pointer;font-weight:700;box-shadow:0 10px 24px rgba(37,99,235,0.12)}
+    .ghost{background:#fff;border:1px solid #eef6ff;padding:10px;border-radius:10px;cursor:pointer}
+
+    .muted{color:var(--muted);font-size:13px}
+
+    /* ---------- comparisons table ---------- */
+    .metrics-table{width:100%;border-collapse:collapse;margin-top:10px}
+    .metrics-table th{background:#fbfdff;text-align:left;padding:12px;color:#0b1220;font-weight:700;border-bottom:1px solid #eef2f7}
+    .metrics-table td{padding:12px;border-bottom:1px solid #f2f6fb;color:#334155}
+
+    /* ---------- panels ---------- */
+    .panels{display:flex;gap:16px;flex-wrap:wrap}
+    .panel{flex:1;min-width:320px;background:linear-gradient(180deg,#ffffff,#fbfdff);padding:12px;border-radius:12px;box-shadow:0 6px 20px rgba(12,18,33,0.04)}
+    .panel h3{margin:0 0 8px;font-size:16px;color:#0b1220}
+    .how{color:var(--muted);font-size:13px;margin-bottom:10px}
+
+    /* ---------- visual cells ---------- */
+    .text-visual, .pattern-visual{display:flex;flex-wrap:wrap;gap:8px;padding:10px;border-radius:10px;border:1px solid #eef3fb;background:#fbfdff}
+    .cell{min-width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#f8fbff;border:1px solid #dfeffc;font-weight:700;color:#064e3b}
+    .cell.empty{background:#fff;color:#94a3b8;font-weight:600}
+    .cell.match{background:linear-gradient(90deg,#bbf7d0,#a7f3d0);box-shadow:0 8px 22px rgba(99,201,151,0.12);color:#064e3b;transition:transform .18s}
+    .cell.rk{background:linear-gradient(90deg,#ede9fe,#e9d5ff);box-shadow:0 8px 22px rgba(124,58,237,0.08);color:#4c1d95;transition:transform .18s}
+    .cell.current{transform:translateY(-6px);box-shadow:0 14px 36px rgba(6,30,60,0.12)}
+
+    /* glowing inline highlight (analysis) */
+    .inline-text{padding:12px;border-radius:8px;background:#fff;border:1px dashed #e6eef9;color:#0b1220;margin-top:12px}
+    .match-glow{padding:2px 6px;border-radius:6px;background:linear-gradient(90deg,#ffe8f0,#ffd6e8);box-shadow:0 0 12px rgba(255,130,180,0.25);color:#6b0750;font-weight:700}
+
+    /* explanation */
+    .explain-box{background:#fbfdff;padding:10px;border-radius:10px;border:1px solid #eef3fb;margin-top:12px;color:#0b1220}
+    .step-item{padding:8px;border-radius:8px;margin-bottom:8px;background:linear-gradient(90deg,#ffffff,#fbfdff);border:1px solid #f2f7ff}
+
+    /* chart container */
+    .chart-wrap{margin-top:12px;padding:12px;border-radius:10px;background:linear-gradient(90deg,#ffffff,#fbfdff);border:1px solid #eef3fb}
+
+    /* bottom controls */
+    .play-controls{display:flex;gap:8px;align-items:center;margin-top:10px}
+    .small-btn{padding:8px 10px;border-radius:8px;border:1px solid #eaf3ff;background:#fff;cursor:pointer}
+
+    /* responsive */
+    @media (max-width:980px){
+      .input-grid{grid-template-columns:1fr}
+      .panels{flex-direction:column}
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">SM</div>
+    <div class="title">String Matching Visualizer</div>
+    <div class="subtitle">Naive vs Rabin–Karp — interactive comparison & step animation</div>
+  </div>
+
+  <div class="page">
+    <!-- Input + Controls -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div style="min-width:0">
+          <div style="font-weight:700;font-size:18px">Input</div>
+          <div class="muted" style="margin-top:6px">Enter the main text and the pattern. Try short and long inputs to see differences.</div>
+        </div>
+      </div>
+
+      <div class="input-grid" style="margin-top:12px">
+        <div>
+          <label for="txt">Text String</label>
+          <textarea id="txt" class="text-input" spellcheck="false">AABAACAADAABAABA</textarea>
+
+          <label for="pat" style="margin-top:12px">Pattern to Search</label>
+          <input id="pat" class="small-input" value="AABA" />
+        </div>
+
+        <div class="controls">
+          <div style="display:flex;gap:8px;">
+            <button id="run" class="run-btn">► Run</button>
+            <button id="reset" class="ghost">Reset</button>
+          </div>
+
+          <div style="margin-top:8px">
+            <div style="font-weight:700;margin-bottom:6px">Animation Controls</div>
+            <div class="play-controls">
+              <button id="prevStep" class="small-btn">◀ Prev</button>
+              <button id="playPause" class="small-btn">Play</button>
+              <button id="nextStep" class="small-btn">Next ▶</button>
+              <div style="margin-left:auto;color:var(--muted);font-size:13px">Speed:
+                <select id="speed" style="margin-left:6px;padding:6px;border-radius:6px;border:1px solid #eef6ff">
+                  <option value="900">Slow</option>
+                  <option value="600" selected>Normal</option>
+                  <option value="300">Fast</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:12px" class="muted">
+            <div><strong>Time Complexity:</strong></div>
+            <div style="margin-top:6px">Naive: <strong>O((n − m + 1) × m)</strong></div>
+            <div>Rabin–Karp: <strong>O(n + m)</strong> (average), <strong>O(n × m)</strong> worst-case</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Performance -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:700;font-size:18px">Performance Comparison</div>
+          <div class="muted" style="margin-top:6px">Matches, comparisons & execution time (ms)</div>
+        </div>
+      </div>
+
+      <table class="metrics-table" style="margin-top:12px">
+        <tbody>
+          <tr><th>Metric</th><th style="text-align:center">Naive</th><th style="text-align:center">Rabin–Karp</th></tr>
+          <tr><td>Matches Found</td><td id="m_naive" style="text-align:center">-</td><td id="m_rk" style="text-align:center">-</td></tr>
+          <tr><td>Character Comparisons</td><td id="c_naive" style="text-align:center">-</td><td id="c_rk" style="text-align:center">-</td></tr>
+          <tr><td>Hash Comparisons</td><td style="text-align:center">N/A</td><td id="h_rk" style="text-align:center">-</td></tr>
+          <tr><td>Execution Time (ms)</td><td id="t_naive" style="text-align:center">-</td><td id="t_rk" style="text-align:center">-</td></tr>
+        </tbody>
+      </table>
+
+      <div class="chart-wrap">
+        <canvas id="perfChart" height="90"></canvas>
+      </div>
+
+      <div id="analysis" class="analysis" style="margin-top:10px">Run algorithms to see analysis.</div>
+    </div>
+
+    <!-- Algorithm Panels -->
+    <div class="panels">
+      <div class="panel">
+        <h3>Naive Algorithm</h3>
+        <div class="how">Slide pattern across every possible window; compare characters directly.</div>
+
+        <div style="font-weight:600;font-size:13px;margin-bottom:8px">Text:</div>
+        <div id="naiveText" class="text-visual"></div>
+
+        <div style="font-weight:600;font-size:13px;margin-top:12px;margin-bottom:8px">Pattern:</div>
+        <div id="naivePattern" class="pattern-visual"></div>
+
+        <div style="margin-top:12px" class="results-line">
+          Matches found: <span id="naiveCount" class="green">-</span><br>
+          Positions: <span id="naivePos" class="muted">-</span><br>
+          Character comparisons: <span id="naiveComp" class="orange">-</span>
+        </div>
+
+        <div class="explain-box" id="naiveExplain" style="margin-top:12px;max-height:210px;overflow:auto"></div>
+      </div>
+
+      <div class="panel">
+        <h3>Rabin–Karp Algorithm</h3>
+        <div class="how">Use rolling hash to avoid many comparisons; verify only when hash matches.</div>
+
+        <div style="font-weight:600;font-size:13px;margin-bottom:8px">Text:</div>
+        <div id="rkText" class="text-visual"></div>
+
+        <div style="font-weight:600;font-size:13px;margin-top:12px;margin-bottom:8px">Pattern:</div>
+        <div id="rkPattern" class="pattern-visual"></div>
+
+        <div style="margin-top:12px" class="results-line">
+          Matches found: <span id="rkCount" class="green">-</span><br>
+          Positions: <span id="rkPos" class="muted">-</span><br>
+          Hash comparisons: <span id="rkHash" class="purple">-</span><br>
+          Character comparisons: <span id="rkChar" class="orange">-</span>
+        </div>
+
+        <div class="explain-box" id="rkExplain" style="margin-top:12px;max-height:210px;overflow:auto"></div>
+      </div>
+    </div>
+
+    <!-- Step log -->
+    <div class="card">
+      <h3>Step-through Log</h3>
+      <div class="muted" style="margin-top:6px">Current window steps for both algorithms (use Play/Next/Prev to step)</div>
+      <div id="stepLog" class="explain-box" style="min-height:80px;margin-top:12px"></div>
+    </div>
+  </div>
+
+  <script>
+    // ---------- helper ----------
+    const el = id => document.getElementById(id);
+
+    async function runLocalMatch(text, pattern) {
+      // run naive and rabin-karp in-browser and return structured results
+      return {
+        naive: naiveSearchWithSteps(text, pattern),
+        rabin_karp: rabinKarpWithSteps(text, pattern)
+      };
+    }
+
+    // state
+    let state = { naiveSteps: [], rkSteps: [], currentStep: 0, playing: false, playTimer: null };
+
+    // ---------- Naive with steps ----------
+    function naiveSearchWithSteps(text, pattern) {
+      const n = text.length, m = pattern.length;
+      const matches = [], steps = [];
+      let comparisons = 0;
+      if (m === 0) return { matches, comparisons, steps };
+
+      for (let i = 0; i <= n - m; i++) {
+        let matched = true;
+        const ver = [];
+        for (let j = 0; j < m; j++) {
+          comparisons++;
+          const equal = text[i + j] === pattern[j];
+          ver.push({ t_index: i + j, t_char: text[i + j], p_index: j, p_char: pattern[j], equal });
+          if (!equal) { matched = false; break; }
+        }
+        if (matched) matches.push(i);
+        steps.push({ window: i, verifications: ver });
+      }
+      return { matches, comparisons, steps };
+    }
+
+    // ---------- Rabin-Karp with steps ----------
+    function rabinKarpWithSteps(text, pattern, base=256, mod=101) {
+      const n = text.length, m = pattern.length;
+      const matches = [], steps = [];
+      let hashComps = 0, charComps = 0;
+      if (m === 0 || m > n) return { matches, hashComps, charComps, steps };
+
+      let p = 0, t = 0, h = 1;
+      for (let i = 0; i < m-1; i++) h = (h * base) % mod;
+      for (let i = 0; i < m; i++) {
+        p = (base * p + pattern.charCodeAt(i)) % mod;
+        t = (base * t + text.charCodeAt(i)) % mod;
+      }
+
+      for (let i = 0; i <= n - m; i++) {
+        hashComps++;
+        const ver = [];
+        let verified = null;
+        if (p === t) {
+          // verify characters
+          verified = true;
+          for (let j = 0; j < m; j++) {
+            charComps++;
+            const equal = text[i + j] === pattern[j];
+            ver.push({ t_index: i + j, t_char: text[i + j], p_index: j, p_char: pattern[j], equal });
+            if (!equal) { verified = false; break; }
+          }
+          if (verified) matches.push(i);
+        } else {
+          // indicate skip due to hash mismatch
+          ver.push({ note: 'hash_mismatch' });
+        }
+        steps.push({ window: i, t_hash: t, p_hash: p, verifications: ver, verified });
+        if (i < n - m) {
+          t = (base * (t - text.charCodeAt(i) * h) + text.charCodeAt(i + m)) % mod;
+          if (t < 0) t += mod;
+        }
+      }
+      return { matches, hashComps, charComps, steps };
+    }
+
+    // ---------- UI Render helpers ----------
+    function createCell(ch, classes='cell') {
+      const d = document.createElement('div');
+      d.className = classes;
+      d.textContent = ch === ' ' ? '␣' : ch;
+      return d;
+    }
+
+    function renderTextVisual(containerId, text, highlights = [], type='naive', currentWindow= null) {
+      const container = el(containerId);
+      container.innerHTML = '';
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        const cell = createCell(ch);
+        if (highlights.includes(i)) cell.classList.add(type === 'rk' ? 'rk' : 'match');
+        if (currentWindow && i >= currentWindow && i < currentWindow + (highlights._len||0)) cell.classList.add('current');
+        container.appendChild(cell);
+      }
+    }
+
+    function renderPattern(containerId, pattern) {
+      const cont = el(containerId); cont.innerHTML = '';
+      for (const c of pattern) cont.appendChild(createCell(c));
+    }
+
+    function formatStepObject(s) {
+      if (!s) return '(no step)';
+      if (s.verifications && s.verifications.length && s.verifications[0].note === 'hash_mismatch') {
+        return 'Hash mismatch — verification skipped';
+      }
+      if (!s.verifications) return '';
+      return s.verifications.map(v => {
+        if (v.note) return v.note;
+        return `${v.t_char === ' ' ? '␣' : v.t_char}(${v.t_index}) ${v.equal ? '✔' : '✖'}`;
+      }).join(', ');
+    }
+
+    // Chart
+    let perfChart = null;
+    function drawChart(naiveChars, rkChars, naiveTime, rkTime) {
+      const ctx = el('perfChart').getContext('2d');
+      if (perfChart) perfChart.destroy();
+      perfChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['Char comparisons','Time (ms)'],
+          datasets: [
+            { label: 'Naive', data: [naiveChars, naiveTime], backgroundColor: 'rgba(37,99,235,0.85)' },
+            { label: 'Rabin–Karp', data: [rkChars, rkTime], backgroundColor: 'rgba(124,58,237,0.85)' }
+          ]
+        },
+        options: {
+          responsive: true,
+          scales: { y: { beginAtZero:true } }
+        }
+      });
+    }
+
+    // ---------- Animation / Step controls ----------
+    function highlightStep(stepIndex) {
+      const nSteps = state.naiveSteps.length;
+      if (nSteps === 0) return;
+      if (stepIndex < 0) stepIndex = 0;
+      if (stepIndex >= nSteps) stepIndex = nSteps - 1;
+      state.currentStep = stepIndex;
+
+      const nstep = state.naiveSteps[stepIndex];
+      const rkstep = state.rkSteps[stepIndex];
+
+      // indices to highlight
+      const nIndices = [];
+      const rkIndices = [];
+      const patternLenN = nstep ? nstep.verifications.length : 0;
+      const patternLenR = rkstep ? (rkstep.verifications[0] && rkstep.verifications[0].note === 'hash_mismatch' ? 0 : rkstep.verifications.length) : 0;
+
+      if (nstep) {
+        for (let k = 0; k < patternLenN; k++) nIndices.push(nstep.window + k);
+      }
+      if (rkstep && patternLenR>0) {
+        for (let k = 0; k < patternLenR; k++) rkIndices.push(rkstep.window + k);
+      }
+
+      // set length markers (for currentWindow highlighting)
+      nIndices._len = patternLenN;
+      rkIndices._len = patternLenR;
+
+      renderTextVisual('naiveText', el('txt').value, nIndices, 'naive', nstep ? nstep.window : null);
+      renderTextVisual('rkText', el('txt').value, rkIndices, 'rk', rkstep ? rkstep.window : null);
+
+      // step log
+      el('stepLog').innerHTML = `<strong>Window ${stepIndex}</strong>
+        <div style="margin-top:8px"><strong>Naive:</strong> ${formatStepObject(nstep)}</div>
+        <div style="margin-top:8px"><strong>Rabin–Karp:</strong> ${formatStepObject(rkstep)}</div>`;
+
+      // update panel explanations (highlight active step)
+      renderExplain('naiveExplain', state.naiveSteps, stepIndex);
+      renderExplain('rkExplain', state.rkSteps, stepIndex);
+    }
+
+    function playAnimation() {
+      if (state.playing) return;
+      state.playing = true; el('playPause').textContent = 'Pause';
+      const speed = parseInt(el('speed').value);
+      state.playTimer = setInterval(() => {
+        if (state.currentStep >= state.naiveSteps.length - 1) { stopAnimation(); return; }
+        highlightStep(state.currentStep + 1);
+      }, speed);
+    }
+    function stopAnimation() {
+      state.playing = false; el('playPause').textContent = 'Play';
+      clearInterval(state.playTimer);
+    }
+
+    // ---------- render step explanations list ----------
+    function renderExplain(containerId, steps, activeIdx = null) {
+      const cont = el(containerId);
+      cont.innerHTML = '';
+      if (!steps || steps.length === 0) { cont.textContent = '(no steps)'; return; }
+      steps.forEach((s,i) => {
+        const d = document.createElement('div'); d.className = 'step-item';
+        d.innerHTML = `<strong>[${i}] window ${s.window}</strong><div style="margin-top:6px">${formatStepObject(s)}</div>`;
+        if (activeIdx !== null && i === activeIdx) d.style.background = 'linear-gradient(90deg,#eef9ff,#ffffff)';
+        cont.appendChild(d);
+      });
+    }
+
+    // ---------- Main run handler (frontend-only) ----------
+    el('run').addEventListener('click', async () => {
+      const text = el('txt').value;
+      const pattern = el('pat').value;
+      if (!text || !pattern) { alert('Please enter both text and pattern.'); return; }
+
+      // run and measure times
+      const t0 = performance.now();
+      const naiveRes = naiveSearchWithSteps(text, pattern);
+      const t1 = performance.now();
+      const rkRes = rabinKarpWithSteps(text, pattern);
+      const t2 = performance.now();
+
+      // populate metrics
+      el('m_naive').textContent = naiveRes.matches.length;
+      el('m_rk').textContent = rkRes.matches.length;
+      el('c_naive').textContent = naiveRes.comparisons;
+      el('c_rk').textContent = rkRes.charComps;
+      el('h_rk').textContent = rkRes.hashComps;
+      el('t_naive').textContent = (t1 - t0).toFixed(3);
+      el('t_rk').textContent = (t2 - t1).toFixed(3);
+
+      // chart
+      drawChart(naiveRes.comparisons, rkRes.charComps, (t1 - t0).toFixed(3), (t2 - t1).toFixed(3));
+
+      // panels
+      el('naiveCount').textContent = naiveRes.matches.length;
+      el('naivePos').textContent = naiveRes.matches.length ? naiveRes.matches.join(', ') : 'None';
+      el('naiveComp').textContent = naiveRes.comparisons;
+
+      el('rkCount').textContent = rkRes.matches.length;
+      el('rkPos').textContent = rkRes.matches.length ? rkRes.matches.join(', ') : 'None';
+      el('rkHash').textContent = rkRes.hashComps;
+      el('rkChar').textContent = rkRes.charComps;
+
+      // patterns
+      renderPattern('naivePattern', pattern);
+      renderPattern('rkPattern', pattern);
+
+      // store steps
+      // ensure same number of steps by padding with empty windows if needed
+      const maxSteps = Math.max(naiveRes.steps.length, rkRes.steps.length);
+      state.naiveSteps = naiveRes.steps.slice();
+      state.rkSteps = rkRes.steps.slice();
+
+      while (state.naiveSteps.length < maxSteps) { state.naiveSteps.push({window: state.naiveSteps.length, verifications: []}); }
+      while (state.rkSteps.length < maxSteps) { state.rkSteps.push({window: state.rkSteps.length, verifications: [{note:'hash_mismatch'}]}); }
+
+      // initial visuals (no highlight)
+      renderTextVisual('naiveText', text, []);
+      renderTextVisual('rkText', text, []);
+      renderExplain('naiveExplain', state.naiveSteps);
+      renderExplain('rkExplain', state.rkSteps);
+
+      // analysis
+      const naiveC = naiveRes.comparisons, rkC = rkRes.charComps;
+      const diff = naiveC - rkC;
+      const reduction = naiveC ? Math.round((diff / naiveC) * 1000)/10 : 0;
+      el('analysis').innerHTML = diff >= 0
+        ? `<span style="color:var(--green);font-weight:700">Rabin–Karp performed ${diff} fewer character comparisons</span> (${reduction}% reduction).`
+        : `<span style="color:var(--orange);font-weight:700">Rabin–Karp performed ${Math.abs(diff)} more character comparisons</span> (due to hash collisions or extra verifications).`;
+
+      // prepare animation
+      state.currentStep = 0;
+      highlightStep(0);
+    });
+
+    // Prev / Next / Play / Reset handlers
+    el('prevStep').addEventListener('click', ()=> { stopAnimation(); highlightStep(Math.max(0, state.currentStep - 1)); });
+    el('nextStep').addEventListener('click', ()=> { stopAnimation(); highlightStep(Math.min(state.naiveSteps.length - 1, state.currentStep + 1)); });
+    el('playPause').addEventListener('click', ()=> { if (state.playing) stopAnimation(); else playAnimation(); });
+    el('reset').addEventListener('click', ()=> {
+      stopAnimation();
+      el('txt').value = 'AABAACAADAABAABA';
+      el('pat').value = 'AABA';
+      ['m_naive','m_rk','c_naive','c_rk','h_rk','t_naive','t_rk','naiveCount','naivePos','naiveComp','rkCount','rkPos','rkHash','rkChar'].forEach(id=>{ if(el(id)) el(id).textContent='-';});
+      el('analysis').textContent = 'Run algorithms to see analysis.';
+      el('naiveText').innerHTML = '';
+      el('rkText').innerHTML = '';
+      el('naivePattern').innerHTML = '';
+      el('rkPattern').innerHTML = '';
+      el('naiveExplain').innerHTML = '';
+      el('rkExplain').innerHTML = '';
+      el('stepLog').innerHTML = '';
+      if (perfChart) perfChart.destroy();
+      state = { naiveSteps:[], rkSteps:[], currentStep:0, playing:false, playTimer:null };
+      el('playPause').textContent = 'Play';
+    });
+
+    // initial demo run on load
+    window.addEventListener('load', ()=> el('run').click());
+  </script>
+</body>
+</html>
